@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>JOJO POKER: REAL DEAL</title>
+<style>
+    body {
+        background-color: #1a0b2e;
+        color: #f1c40f;
+        font-family: "Hiragino Mincho ProN", serif;
+        text-align: center;
+        margin: 0;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .enemy-area {
+        flex: 1;
+        border: 2px solid #f1c40f;
+        background: #000;
+        position: relative;
+        padding: 10px;
+    }
+    .enemy-face { font-size: 50px; margin: 5px; transition: 0.3s; }
+    .dialogue { font-size: 14px; min-height: 50px; color: #fff; margin-bottom: 5px;}
+    .chips-area { font-size: 18px; display: flex; justify-content: space-around; background: #330033; padding: 5px;}
+    
+    .table-area {
+        flex: 2;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+    .cards { display: flex; justify-content: center; gap: 5px; margin: 10px 0; }
+    .card {
+        width: 45px; height: 70px;
+        background: linear-gradient(135deg, #444 0%, #000 100%);
+        border: 2px solid #fff;
+        border-radius: 4px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; color: #fff;
+        cursor: pointer;
+        position: relative;
+        transition: transform 0.3s;
+    }
+    .card.red { color: #ff5555; background: #fff; }
+    .card.black { color: #000; background: #fff; }
+    .card.back { background: repeating-linear-gradient(45deg, #330033, #330033 10px, #4b0082 10px, #4b0082 20px); color: transparent; }
+    
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; padding-bottom: 20px;}
+    button {
+        background: #4b0082; color: #fff; border: 1px solid #f1c40f;
+        padding: 12px; font-size: 14px; border-radius: 5px; font-weight: bold;
+    }
+    button:disabled { opacity: 0.3; }
+    button.action-btn { background: #800000; }
+    
+    .msg-overlay {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.9); border: 2px solid #f1c40f;
+        padding: 20px; z-index: 10; display: none; width: 80%;
+    }
+</style>
+</head>
+<body>
+
+<div class="chips-area">
+    <span>Enemy: <span id="enemy-chips">100</span></span>
+    <span>Pot: <span id="pot">0</span></span>
+    <span>You: <span id="player-chips">100</span></span>
+</div>
+
+<div class="enemy-area">
+    <div class="enemy-face" id="face">😼</div>
+    <div class="dialogue" id="dialogue">「グッド！受けてたとう！」<br>ゲームを開始してくれ。</div>
+    <div class="cards" id="enemy-hand-disp">
+        <div class="card back"></div><div class="card back"></div><div class="card back"></div><div class="card back"></div><div class="card back"></div>
+    </div>
+</div>
+
+<div class="table-area">
+    <div id="game-msg" style="color:#f1c40f; font-weight:bold; height:20px;"></div>
+    <div class="cards" id="player-hand-disp">
+        <div class="card back"></div><div class="card back"></div><div class="card back"></div><div class="card back"></div><div class="card back"></div>
+    </div>
+</div>
+
+<div class="controls">
+    <button onclick="startGame()" id="btn-deal">DEAL (配る)</button>
+    <button onclick="lookCards()" id="btn-look" disabled>カードを見る</button>
+    <button onclick="action('call')" id="btn-call" class="action-btn" disabled>CALL (勝負)</button>
+    <button onclick="action('raise')" id="btn-raise" class="action-btn" disabled>RAISE (上乗せ)</button>
+    <button onclick="cheat()" id="btn-cheat" style="grid-column: span 2; background:#333;">スタープラチナ (カードすり替え)</button>
+</div>
+
+<div class="msg-overlay" id="result-overlay">
+    <h2 id="result-title">WIN</h2>
+    <p id="result-desc">...</p>
+    <button onclick="resetGame()">NEXT GAME</button>
+</div>
+
+<script>
+    const SUITS = ['♠', '♣', '♦', '♥'];
+    const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    
+    let deck = [];
+    let playerHand = [];
+    let enemyHand = [];
+    let pChips = 100;
+    let eChips = 100;
+    let pot = 0;
+    let currentBet = 10;
+    let hasLooked = false;
+    let gameActive = false;
+
+    // ゲーム初期化
+    function createDeck() {
+        deck = [];
+        for(let s of SUITS) {
+            for(let r of RANKS) {
+                deck.push({ suit: s, rank: r, val: RANKS.indexOf(r) });
+            }
+        }
+        // シャッフル
+        for(let i=deck.length-1; i>0; i--){
+            const j = Math.floor(Math.random() * (i+1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+    }
+
+    function startGame() {
+        if(pChips <=0 || eChips <=0) {
+            alert("勝負あり！ページを更新して再戦してください。");
+            return;
+        }
+        createDeck();
+        playerHand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+        enemyHand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+        
+        pot = 20; // 参加費
+        pChips -= 10; eChips -= 10;
+        currentBet = 10;
+        hasLooked = false;
+        gameActive = true;
+
+        updateUI();
+        document.getElementById('dialogue').innerText = "「カードは配られた…」\nどうする？";
+        document.getElementById('face').innerText = "😼";
+        
+        // カードを裏向きにセット
+        renderHand('player-hand-disp', playerHand, false);
+        renderHand('enemy-hand-disp', enemyHand, false);
+
+        setBtnState(true); // ゲーム中ボタン有効化
+        document.getElementById('btn-deal').disabled = true;
+    }
+
+    // 画面更新
+    function updateUI() {
+        document.getElementById('player-chips').innerText = pChips;
+        document.getElementById('enemy-chips').innerText = eChips;
+        document.getElementById('pot').innerText = pot;
+    }
+
+    function renderHand(elementId, hand, reveal) {
+        const el = document.getElementById(elementId);
+        el.innerHTML = '';
+        hand.forEach(card => {
+            const div = document.createElement('div');
+            div.className = 'card ' + (reveal ? (card.suit === '♥' || card.suit === '♦' ? 'red' : 'black') : 'back');
+            div.innerText = reveal ? card.suit + card.rank : '';
+            el.appendChild(div);
+        });
+    }
+
+    // アクション
+    function lookCards() {
+        if(!gameActive) return;
+        renderHand('player-hand-disp', playerHand, true);
+        hasLooked = true;
+        document.getElementById('dialogue').innerText = "「ほう…自分の手を見たな」\nダービーは余裕の表情だ。";
+        document.getElementById('btn-look').disabled = true;
+    }
+
+    function action(act) {
+        if(!gameActive) return;
+
+        if(act === 'raise') {
+            if(pChips < 20) return alert("魂（チップ）が足りない！");
+            pChips -= 20;
+            pot += 20;
+            // 敵の反応（AI）
+            let enemyStrong = evaluateHand(enemyHand).score > 1; // ペア以上なら強いと判断
+            
+            if(enemyStrong || Math.random() > 0.5) {
+                eChips -= 20; pot += 20;
+                document.getElementById('dialogue').innerText = "「コールだ！上乗せしてやろう」";
+            } else {
+                endGame('win', "ダービーは降りた！\n「ば…ばかな…手も見ずにレイズだと！？」");
+                return;
+            }
+        } else if (act === 'call') {
+            // 勝負
+        }
+
+        updateUI();
+        showdown();
+    }
+
+    // スタープラチナ（イカサマ機能）
+    function cheat() {
+        if(!gameActive || pChips < 50) return;
+        if(confirm("スタープラチナを使ってカードをすり替えますか？(魂-50)")) {
+            pChips -= 50;
+            // 手札を強制的に最強にする（フォーカードなど）
+            playerHand[0] = {suit:'♠', rank:'A', val:12};
+            playerHand[1] = {suit:'♥', rank:'A', val:12};
+            playerHand[2] = {suit:'♦', rank:'A', val:12};
+            playerHand[3] = {suit:'♣', rank:'A', val:12};
+            playerHand[4] = {suit:'♠', rank:'K', val:11};
+            
+            if(hasLooked) renderHand('player-hand-disp', playerHand, true);
+            document.getElementById('game-msg').innerText = "『スタープラチナ！』すり替えた！";
+            updateUI();
+        }
+    }
+
+    function showdown() {
+        gameActive = false;
+        renderHand('player-hand-disp', playerHand, true);
+        renderHand('enemy-hand-disp', enemyHand, true);
+
+        let pScore = evaluateHand(playerHand);
+        let eScore = evaluateHand(enemyHand);
+
+        let msg = `あなた: ${pScore.name}\n敵: ${eScore.name}`;
+        
+        if(pScore.score > eScore.score) {
+            endGame('win', msg + "\nあなたの勝ちだ！");
+        } else if (pScore.score < eScore.score) {
+            endGame('lose', msg + "\nダービーの勝ちだ…");
+        } else {
+            // 簡易的にハイカード勝負（合計値）
+            let pSum = playerHand.reduce((a,b)=>a+b.val,0);
+            let eSum = enemyHand.reduce((a,b)=>a+b.val,0);
+            if(pSum >= eSum) endGame('win', msg + "\n(ハイカード判定) WIN!");
+            else endGame('lose', msg + "\n(ハイカード判定) LOSE...");
+        }
+    }
+
+    // 簡易役判定
+    function evaluateHand(hand) {
+        let counts = {};
+        hand.forEach(c => counts[c.rank] = (counts[c.rank]||0)+1);
+        let vals = Object.values(counts);
+        
+        if(vals.includes(4)) return {score: 5, name: "フォーカード"};
+        if(vals.includes(3) && vals.includes(2)) return {score: 4, name: "フルハウス"};
+        if(vals.includes(3)) return {score: 3, name: "スリーカード"};
+        if(vals.filter(v=>v===2).length === 2) return {score: 2, name: "ツーペア"};
+        if(vals.includes(2)) return {score: 1, name: "ワンペア"};
+        return {score: 0, name: "ブタ"};
+    }
+
+    function endGame(result, text) {
+        const overlay = document.getElementById('result-overlay');
+        const title = document.getElementById('result-title');
+        const desc = document.getElementById('result-desc');
+        
+        overlay.style.display = 'block';
+        title.innerText = result === 'win' ? "YOU WIN!" : "YOU LOSE...";
+        title.style.color = result === 'win' ? "#f1c40f" : "#888";
+        desc.innerText = text;
+
+        if(result === 'win') {
+            pChips += pot;
+            document.getElementById('face').innerText = "🏳️";
+        } else {
+            eChips += pot;
+            document.getElementById('face').innerText = "😎";
+        }
+        pot = 0;
+        updateUI();
+    }
+
+    function resetGame() {
+        document.getElementById('result-overlay').style.display = 'none';
+        setBtnState(false);
+        document.getElementById('btn-deal').disabled = false;
+        renderHand('player-hand-disp', [], false);
+        renderHand('enemy-hand-disp', [], false);
+        document.getElementById('face').innerText = "😼";
+        document.getElementById('dialogue').innerText = "「次の勝負といこうか…」";
+        document.getElementById('game-msg').innerText = "";
+    }
+
+    function setBtnState(enabled) {
+        document.getElementById('btn-look').disabled = !enabled;
+        document.getElementById('btn-call').disabled = !enabled;
+        document.getElementById('btn-raise').disabled = !enabled;
+    }
+</script>
+</body>
+</html>
